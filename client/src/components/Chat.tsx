@@ -19,20 +19,11 @@ type Message = {
   isUser: boolean;
 };
 
-// Function to get the API base URL based on the environment
-const getApiBaseUrl = () => {
-  if (import.meta.env.PROD) {
-    // In production (GitHub Pages), use the webhook URL
-    return "https://webhook.site/YOUR-WEBHOOK-URL";
-  }
-  // In development, use the local API
-  return "/api";
-};
+const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4dc2-877c-832100f7a80a";
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
-  const apiBaseUrl = getApiBaseUrl();
 
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
@@ -43,7 +34,7 @@ export default function Chat() {
 
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
-      const response = await fetch(`${apiBaseUrl}/messages`, {
+      const response = await fetch(WEBHOOK_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
