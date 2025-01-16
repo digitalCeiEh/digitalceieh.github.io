@@ -35,13 +35,15 @@ export default function Chat() {
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
-        // Send message to n8n webhook
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ text: message }),
+          body: JSON.stringify({ 
+            text: message,
+            timestamp: new Date().toISOString(),
+          }),
         });
 
         if (!response.ok) {
@@ -49,19 +51,17 @@ export default function Chat() {
           throw new Error(`Failed to send message: ${errorText}`);
         }
 
-        // Simulate response after 1 second
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        const responseData = await response.json();
 
-        // Add bot response
+        // Handle various response formats from n8n
         const botResponse: Message = {
-          content: "I received your message and I'm processing it...",
-          timestamp: new Date().toISOString(),
+          content: responseData.text || responseData.message || responseData.content || "Received your message",
+          timestamp: responseData.timestamp || new Date().toISOString(),
           isUser: false,
         };
 
         setMessages(prev => [...prev, botResponse]);
-
-        return response.json();
+        return responseData;
       } catch (error) {
         console.error("Error sending message:", error);
         throw error;
