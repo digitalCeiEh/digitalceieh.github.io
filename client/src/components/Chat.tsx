@@ -25,7 +25,7 @@ const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4d
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
-  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
@@ -38,13 +38,14 @@ export default function Chat() {
   useEffect(() => {
     // Create WebSocket connection
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
 
-    ws.onopen = () => {
+    socket.onopen = () => {
       console.log('WebSocket Connected');
+      setWs(socket);
     };
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
         const response = JSON.parse(event.data);
         console.log('Received message:', response);
@@ -61,28 +62,42 @@ export default function Chat() {
       }
     };
 
-    ws.onerror = (error) => {
+    socket.onerror = (error) => {
       console.error('WebSocket error:', error);
       toast({
         title: "Connection Error",
-        description: "Failed to connect to the server. Please try again later.",
+        description: "Failed to connect to the server. Retrying...",
         variant: "destructive",
       });
+
+      // Attempt to reconnect after 5 seconds
+      setTimeout(() => {
+        socket.close();
+      }, 5000);
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket disconnected. Reconnecting...');
+      setWs(null);
+      // Attempt to reconnect after 5 seconds
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
     };
 
     // Cleanup WebSocket connection on unmount
     return () => {
-      ws.close();
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
     };
   }, [toast]);
 
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
-        const messageId = Date.now().toString();
         console.log("Sending message to n8n:", {
           text: message,
-          message_id: messageId,
           timestamp: new Date().toISOString()
         });
 
@@ -93,7 +108,6 @@ export default function Chat() {
           },
           body: JSON.stringify({
             text: message,
-            message_id: messageId,
             timestamp: new Date().toISOString()
           }),
         });
@@ -102,14 +116,13 @@ export default function Chat() {
           throw new Error(`Failed to send message: ${await response.text()}`);
         }
 
-        setLastMessageId(messageId);
         return await response.json();
       } catch (error) {
         console.error("Error sending message:", error);
         throw error;
       }
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       form.reset();
       toast({
         title: "Message sent",
