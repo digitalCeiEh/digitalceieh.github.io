@@ -19,13 +19,16 @@ type Message = {
   isUser: boolean;
 };
 
-// This URL should be updated with your GitHub Pages domain
-const GITHUB_PAGES_URL = `${window.location.protocol}//${window.location.host}`;
+// n8n webhook endpoint that will process our messages
 const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4dc2-877c-832100f7a80a";
+
+// Secondary n8n webhook that will store our responses temporarily
+const RESPONSE_STORAGE_WEBHOOK = "https://cesarem.app.n8n.cloud/webhook/store-response";
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
+  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
@@ -37,10 +40,11 @@ export default function Chat() {
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
-        // Log the request payload for debugging
+        const messageId = Date.now().toString();
         console.log("Sending message to n8n:", {
           text: message,
-          callback_url: `${GITHUB_PAGES_URL}/api/webhook/response`,
+          message_id: messageId,
+          store_response_webhook: RESPONSE_STORAGE_WEBHOOK,
           timestamp: new Date().toISOString()
         });
 
@@ -51,25 +55,18 @@ export default function Chat() {
           },
           body: JSON.stringify({
             text: message,
-            callback_url: `${GITHUB_PAGES_URL}/api/webhook/response`,
+            message_id: messageId,
+            store_response_webhook: RESPONSE_STORAGE_WEBHOOK,
             timestamp: new Date().toISOString()
           }),
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Error response from n8n:", {
-            status: response.status,
-            statusText: response.statusText,
-            body: errorText
-          });
-          throw new Error(`Failed to send message: ${errorText}`);
+          throw new Error(`Failed to send message: ${await response.text()}`);
         }
 
-        const responseData = await response.json();
-        console.log("Response from n8n:", responseData);
-
-        return responseData;
+        setLastMessageId(messageId);
+        return await response.json();
       } catch (error) {
         console.error("Error sending message:", error);
         throw error;
@@ -102,11 +99,13 @@ export default function Chat() {
     await sendMessage.mutateAsync(values.message);
   }
 
-  // Polling function to check for new messages
+  // Poll for responses using the response storage webhook
   useEffect(() => {
+    if (!lastMessageId) return;
+
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`${GITHUB_PAGES_URL}/api/messages/latest`);
+        const response = await fetch(`${RESPONSE_STORAGE_WEBHOOK}/${lastMessageId}`);
         if (response.ok) {
           const data = await response.json();
           if (data && data.content) {
@@ -115,15 +114,32 @@ export default function Chat() {
               timestamp: data.timestamp || new Date().toISOString(),
               isUser: false
             }]);
+            // Clear lastMessageId after receiving response
+            setLastMessageId(null);
+            clearInterval(pollInterval);
           }
         }
       } catch (error) {
-        console.error("Error polling for messages:", error);
+        console.error("Error polling for response:", error);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 2000); // Poll every 2 seconds
 
-    return () => clearInterval(pollInterval);
-  }, []);
+    // Clear interval after 30 seconds if no response
+    const timeout = setTimeout(() => {
+      clearInterval(pollInterval);
+      setLastMessageId(null);
+      toast({
+        title: "No response",
+        description: "Failed to get a response. Please try again.",
+        variant: "destructive",
+      });
+    }, 30000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(timeout);
+    };
+  }, [lastMessageId, toast]);
 
   return (
     <Card className="w-full max-w-2xl">
