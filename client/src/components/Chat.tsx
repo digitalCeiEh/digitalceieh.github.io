@@ -22,9 +22,6 @@ type Message = {
 // n8n webhook endpoint that will process our messages
 const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4dc2-877c-832100f7a80a";
 
-// Secondary n8n webhook that will store our responses temporarily
-const RESPONSE_STORAGE_WEBHOOK = "https://cesarem.app.n8n.cloud/webhook/store-response";
-
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
@@ -37,6 +34,48 @@ export default function Chat() {
     },
   });
 
+  // Setup WebSocket connection
+  useEffect(() => {
+    // Create WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+    ws.onopen = () => {
+      console.log('WebSocket Connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        console.log('Received message:', response);
+
+        if (response.content) {
+          setMessages(prev => [...prev, {
+            content: response.content,
+            timestamp: response.timestamp || new Date().toISOString(),
+            isUser: false
+          }]);
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to the server. Please try again later.",
+        variant: "destructive",
+      });
+    };
+
+    // Cleanup WebSocket connection on unmount
+    return () => {
+      ws.close();
+    };
+  }, [toast]);
+
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
@@ -44,7 +83,6 @@ export default function Chat() {
         console.log("Sending message to n8n:", {
           text: message,
           message_id: messageId,
-          store_response_webhook: RESPONSE_STORAGE_WEBHOOK,
           timestamp: new Date().toISOString()
         });
 
@@ -56,7 +94,6 @@ export default function Chat() {
           body: JSON.stringify({
             text: message,
             message_id: messageId,
-            store_response_webhook: RESPONSE_STORAGE_WEBHOOK,
             timestamp: new Date().toISOString()
           }),
         });
@@ -98,48 +135,6 @@ export default function Chat() {
     setMessages((prev) => [...prev, newMessage]);
     await sendMessage.mutateAsync(values.message);
   }
-
-  // Poll for responses using the response storage webhook
-  useEffect(() => {
-    if (!lastMessageId) return;
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`${RESPONSE_STORAGE_WEBHOOK}/${lastMessageId}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.content) {
-            setMessages((prev) => [...prev, {
-              content: data.content,
-              timestamp: data.timestamp || new Date().toISOString(),
-              isUser: false
-            }]);
-            // Clear lastMessageId after receiving response
-            setLastMessageId(null);
-            clearInterval(pollInterval);
-          }
-        }
-      } catch (error) {
-        console.error("Error polling for response:", error);
-      }
-    }, 2000); // Poll every 2 seconds
-
-    // Clear interval after 30 seconds if no response
-    const timeout = setTimeout(() => {
-      clearInterval(pollInterval);
-      setLastMessageId(null);
-      toast({
-        title: "No response",
-        description: "Failed to get a response. Please try again.",
-        variant: "destructive",
-      });
-    }, 30000);
-
-    return () => {
-      clearInterval(pollInterval);
-      clearTimeout(timeout);
-    };
-  }, [lastMessageId, toast]);
 
   return (
     <Card className="w-full max-w-2xl">

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, type VerifyClientCallbackAsync } from "ws";
 import cors from "cors";
 
 // Map to store WebSocket connections
@@ -36,30 +36,53 @@ export function registerRoutes(app: Express): Server {
   // Endpoint to receive n8n responses
   app.post("/api/webhook/response", async (req, res) => {
     try {
-      console.log("Received webhook request:");
+      console.log("Received webhook response from n8n:");
       console.log("Headers:", req.headers);
       console.log("Body:", JSON.stringify(req.body, null, 2));
 
+      // Extract the message content from various possible n8n response formats
+      let messageContent;
+      if (typeof req.body === 'string') {
+        try {
+          const parsedBody = JSON.parse(req.body);
+          messageContent = parsedBody.text || parsedBody.message || parsedBody.content;
+        } catch {
+          messageContent = req.body;
+        }
+      } else {
+        messageContent = req.body.text || req.body.message || req.body.content;
+      }
+
+      if (!messageContent) {
+        console.error("No message content found in webhook response");
+        return res.status(400).json({ error: "No message content found" });
+      }
+
+      // Format the response for the chat
       const response = {
-        content: req.body.text || req.body.message || "No message content",
+        content: messageContent,
         timestamp: new Date().toISOString(),
         isUser: false
       };
 
-      console.log("Formatted response:", JSON.stringify(response, null, 2));
+      console.log("Formatted chat response:", response);
 
       // Broadcast the message to all connected WebSocket clients
       let clientsNotified = 0;
-      clients.forEach(client => {
+      clients.forEach((client, id) => {
         if (client.readyState === 1) { // 1 = WebSocket.OPEN
-          client.send(JSON.stringify(response));
-          clientsNotified++;
+          try {
+            client.send(JSON.stringify(response));
+            clientsNotified++;
+            console.log(`Message sent to client ${id}`);
+          } catch (error) {
+            console.error(`Error sending to client ${id}:`, error);
+          }
         }
       });
 
       console.log(`Message broadcasted to ${clientsNotified} clients`);
-
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, clientsNotified });
     } catch (error) {
       console.error("Error processing webhook response:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -71,11 +94,14 @@ export function registerRoutes(app: Express): Server {
   // Set up WebSocket server
   const wss = new WebSocketServer({ 
     server: httpServer,
-    verifyClient: (info) => {
+    verifyClient: ((info, cb) => {
       // Ignore Vite HMR WebSocket connections
       const protocol = info.req.headers['sec-websocket-protocol'];
-      return protocol !== 'vite-hmr';
-    }
+      if (protocol === 'vite-hmr') {
+        return cb(false);
+      }
+      cb(true);
+    }) as VerifyClientCallbackAsync
   });
 
   wss.on("connection", (ws) => {
