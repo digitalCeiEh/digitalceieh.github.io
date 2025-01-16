@@ -93,23 +93,32 @@ export default function Chat() {
     <Card className="w-full max-w-2xl">
       <CardContent className="p-6">
         <div className="space-y-4">
-          <div className="h-[400px] overflow-y-auto space-y-4 mb-4">
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${msg.isUser ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] p-3 rounded-lg ${
-                    msg.isUser
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
-                  }`}
-                >
-                  {msg.content}
-                </div>
+          <div className="h-[400px] overflow-y-auto space-y-4 mb-4 p-4 border rounded-lg bg-background/50">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                Start a conversation...
               </div>
-            ))}
+            ) : (
+              messages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.isUser ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-4`}
+                >
+                  <div
+                    className={`max-w-[80%] p-3 rounded-lg ${
+                      msg.isUser
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted"
+                    }`}
+                  >
+                    <div className="break-words">{msg.content}</div>
+                    <div className={`text-xs mt-1 ${msg.isUser ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <Form {...form}>
@@ -124,13 +133,18 @@ export default function Chat() {
                         placeholder="Type your message..."
                         {...field}
                         disabled={sendMessage.isPending}
+                        className="bg-background"
                       />
                     </FormControl>
                   </FormItem>
                 )}
               />
-              <Button type="submit" disabled={sendMessage.isPending}>
-                Send
+              <Button 
+                type="submit" 
+                disabled={sendMessage.isPending}
+                className="min-w-[80px]"
+              >
+                {sendMessage.isPending ? "Sending..." : "Send"}
               </Button>
             </form>
           </Form>
