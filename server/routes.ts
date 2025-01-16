@@ -9,6 +9,7 @@ const clients = new Map();
 export function registerRoutes(app: Express): Server {
   // Enable CORS for all routes
   app.use(cors());
+
   // Message webhook endpoint
   app.post("/api/messages", async (req, res) => {
     try {
@@ -35,7 +36,9 @@ export function registerRoutes(app: Express): Server {
   // Endpoint to receive n8n responses
   app.post("/api/webhook/response", async (req, res) => {
     try {
-      console.log("Received webhook response:", req.body);
+      console.log("Received webhook request:");
+      console.log("Headers:", req.headers);
+      console.log("Body:", JSON.stringify(req.body, null, 2));
 
       const response = {
         content: req.body.text || req.body.message || "No message content",
@@ -43,12 +46,18 @@ export function registerRoutes(app: Express): Server {
         isUser: false
       };
 
+      console.log("Formatted response:", JSON.stringify(response, null, 2));
+
       // Broadcast the message to all connected WebSocket clients
+      let clientsNotified = 0;
       clients.forEach(client => {
         if (client.readyState === 1) { // 1 = WebSocket.OPEN
           client.send(JSON.stringify(response));
+          clientsNotified++;
         }
       });
+
+      console.log(`Message broadcasted to ${clientsNotified} clients`);
 
       return res.status(200).json({ success: true });
     } catch (error) {
