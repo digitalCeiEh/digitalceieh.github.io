@@ -19,12 +19,13 @@ type Message = {
   isUser: boolean;
 };
 
+// This URL should be updated with your GitHub Pages domain
+const GITHUB_PAGES_URL = `${window.location.protocol}//${window.location.host}`;
 const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4dc2-877c-832100f7a80a";
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
-  const [socket, setSocket] = useState<WebSocket | null>(null);
 
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
@@ -33,60 +34,31 @@ export default function Chat() {
     },
   });
 
-  useEffect(() => {
-    // Create WebSocket connection with protocol matching the page
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
-
-    ws.onopen = () => {
-      console.log("WebSocket connection established");
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const response = JSON.parse(event.data);
-        setMessages((prev) => [...prev, response]);
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("WebSocket connection closed");
-    };
-
-    setSocket(ws);
-
-    // Cleanup on unmount
-    return () => {
-      ws.close();
-    };
-  }, []);
-
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
-        // Log the request payload
-        console.log("Sending payload:", { text: message });
+        // Log the request payload for debugging
+        console.log("Sending message to n8n:", {
+          text: message,
+          callback_url: `${GITHUB_PAGES_URL}/api/webhook/response`,
+          timestamp: new Date().toISOString()
+        });
 
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             text: message,
-            timestamp: new Date().toISOString(),
+            callback_url: `${GITHUB_PAGES_URL}/api/webhook/response`,
+            timestamp: new Date().toISOString()
           }),
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Server response:", {
+          console.error("Error response from n8n:", {
             status: response.status,
             statusText: response.statusText,
             body: errorText
@@ -94,13 +66,16 @@ export default function Chat() {
           throw new Error(`Failed to send message: ${errorText}`);
         }
 
-        return response.json();
+        const responseData = await response.json();
+        console.log("Response from n8n:", responseData);
+
+        return responseData;
       } catch (error) {
         console.error("Error sending message:", error);
         throw error;
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       form.reset();
       toast({
         title: "Message sent",
@@ -126,6 +101,29 @@ export default function Chat() {
     setMessages((prev) => [...prev, newMessage]);
     await sendMessage.mutateAsync(values.message);
   }
+
+  // Polling function to check for new messages
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`${GITHUB_PAGES_URL}/api/messages/latest`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.content) {
+            setMessages((prev) => [...prev, {
+              content: data.content,
+              timestamp: data.timestamp || new Date().toISOString(),
+              isUser: false
+            }]);
+          }
+        }
+      } catch (error) {
+        console.error("Error polling for messages:", error);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, []);
 
   return (
     <Card className="w-full max-w-2xl">
