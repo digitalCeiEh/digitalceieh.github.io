@@ -1,11 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer } from "ws";
+import cors from "cors";
 
 // Map to store WebSocket connections
 const clients = new Map();
 
 export function registerRoutes(app: Express): Server {
+  // Enable CORS for all routes
+  app.use(cors());
   // Message webhook endpoint
   app.post("/api/messages", async (req, res) => {
     try {
