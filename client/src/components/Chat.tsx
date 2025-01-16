@@ -37,7 +37,10 @@ export default function Chat() {
       try {
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
-          body: JSON.stringify({ message }),
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: message }),
         });
 
         if (!response.ok) {
