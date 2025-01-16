@@ -19,10 +19,21 @@ type Message = {
   isUser: boolean;
 };
 
+// Function to get the API base URL based on the environment
+const getApiBaseUrl = () => {
+  if (import.meta.env.PROD) {
+    // In production (GitHub Pages), use the webhook URL
+    return "https://webhook.site/YOUR-WEBHOOK-URL";
+  }
+  // In development, use the local API
+  return "/api";
+};
+
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const { toast } = useToast();
-  
+  const apiBaseUrl = getApiBaseUrl();
+
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
     defaultValues: {
@@ -32,7 +43,7 @@ export default function Chat() {
 
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
-      const response = await fetch("/api/messages", {
+      const response = await fetch(`${apiBaseUrl}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
