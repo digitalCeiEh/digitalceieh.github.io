@@ -35,6 +35,9 @@ export default function Chat() {
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
       try {
+        // Log the request payload
+        console.log("Sending payload:", { text: message });
+
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
           headers: {
@@ -45,6 +48,11 @@ export default function Chat() {
 
         if (!response.ok) {
           const errorText = await response.text();
+          console.error("Server response:", {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          });
           throw new Error(`Failed to send message: ${errorText}`);
         }
 
