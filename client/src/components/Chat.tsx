@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,73 +23,7 @@ const WEBHOOK_URL = "https://cesarem.app.n8n.cloud/webhook-test/4ab9ed06-5ce6-4d
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [ws, setWs] = useState<WebSocket | null>(null);
-  const [wsStatus, setWsStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
   const { toast } = useToast();
-
-  useEffect(() => {
-    // Connect to WebSocket
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
-    console.log("Connecting to WebSocket:", wsUrl);
-    const websocket = new WebSocket(wsUrl);
-
-    websocket.onopen = () => {
-      console.log("WebSocket connected successfully");
-      setWsStatus('connected');
-      toast({
-        title: "Connected",
-        description: "WebSocket connection established",
-      });
-    };
-
-    websocket.onmessage = (event) => {
-      try {
-        console.log("Received WebSocket message:", event.data);
-        const data = JSON.parse(event.data);
-        if (data.type === "n8n_response") {
-          console.log("Processing n8n response:", data.data);
-          const response = data.data;
-          // Add the n8n response as a new message
-          setMessages(prev => [...prev, {
-            content: response.message || JSON.stringify(response),
-            timestamp: new Date().toISOString(),
-            isUser: false
-          }]);
-        }
-      } catch (error) {
-        console.error("Error processing WebSocket message:", error);
-        toast({
-          title: "Error",
-          description: "Failed to process incoming message",
-          variant: "destructive",
-        });
-      }
-    };
-
-    websocket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setWsStatus('error');
-      toast({
-        title: "Connection Error",
-        description: "Failed to connect to the server. Please try again later.",
-        variant: "destructive",
-      });
-    };
-
-    websocket.onclose = () => {
-      console.log("WebSocket connection closed");
-      setWsStatus('error');
-    };
-
-    setWs(websocket);
-
-    // Cleanup on unmount
-    return () => {
-      console.log("Cleaning up WebSocket connection");
-      websocket.close();
-    };
-  }, [toast]);
 
   const form = useForm<z.infer<typeof messageSchema>>({
     resolver: zodResolver(messageSchema),
@@ -159,17 +93,6 @@ export default function Chat() {
     <Card className="w-full max-w-2xl">
       <CardContent className="p-6">
         <div className="space-y-4">
-          {/* Connection status indicator */}
-          <div className={`text-sm text-center p-1 rounded ${
-            wsStatus === 'connected' ? 'bg-green-100 text-green-800' :
-            wsStatus === 'error' ? 'bg-red-100 text-red-800' :
-            'bg-yellow-100 text-yellow-800'
-          }`}>
-            {wsStatus === 'connected' ? 'Connected' :
-             wsStatus === 'error' ? 'Connection Error' :
-             'Connecting...'}
-          </div>
-
           <div className="h-[400px] overflow-y-auto space-y-4 mb-4 p-4 border rounded-lg bg-background/50">
             {messages.length === 0 ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
