@@ -34,19 +34,22 @@ export default function Chat() {
 
   const sendMessage = useMutation({
     mutationFn: async (message: string) => {
-      const response = await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ message }),
-      });
+      try {
+        const response = await fetch(WEBHOOK_URL, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to send message: ${errorText}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error("Error sending message:", error);
+        throw error;
       }
-
-      return response.json();
     },
     onSuccess: () => {
       form.reset();
@@ -55,10 +58,11 @@ export default function Chat() {
         description: "Your message has been sent successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
+      console.error("Mutation error:", error);
       toast({
         title: "Error",
-        description: "Failed to send message. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to send message. Please try again.",
         variant: "destructive",
       });
     },
